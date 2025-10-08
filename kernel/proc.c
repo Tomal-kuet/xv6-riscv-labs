@@ -5,6 +5,13 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "pstat.h"
+
+struct {
+  struct spinlock lock;
+  struct proc proc[NPROC];
+} ptable;
+
 
 struct cpu cpus[NCPU];
 
@@ -119,7 +126,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-
+  p->cputime = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -654,3 +661,38 @@ procdump(void)
     printf("\n");
   }
 }
+
+
+int
+wait2(int *status, struct rusage *usage)
+{
+    struct proc *p;
+    int havekids;
+    struct proc *curproc = myproc();
+
+    acquire(&ptable.lock);
+    for(;;){
+        havekids = 0;
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            if(p->parent != curproc)
+                continue;
+            havekids = 1;
+            if(p->state == ZOMBIE){
+                if(status)
+                    *status = p->xstate;
+                if(usage)
+                    usage->cputime = p->cputime;
+                freeproc(p);
+                release(&ptable.lock);
+                return p->pid;
+            }
+        }
+
+        if(!havekids || curproc->killed){
+            release(&ptable.lock);
+            return -1;
+        }
+        sleep(curproc, &ptable.lock);
+    }
+}
+

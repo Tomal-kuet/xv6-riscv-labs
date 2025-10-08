@@ -77,9 +77,14 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+      if(p != 0){             // only increment for a user process
+          acquire(&p->lock);
+          p->cputime++;       // increment CPU time by 1 tick
+          release(&p->lock);
+    }
     yield();
-
+  }
   usertrapret();
 }
 
